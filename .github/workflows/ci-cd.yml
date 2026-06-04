@@ -1,0 +1,26 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build project
+        run: echo "Build frontend, backend, and AI service"
+
+      - name: Test project
+        run: echo "Run testing"
+
+      - name: Dockerize
+        run: echo "Build Docker images"
+
+      - name: Deploy
+        run: echo "Deploy to cloud server"
