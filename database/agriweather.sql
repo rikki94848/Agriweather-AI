@@ -1,11 +1,11 @@
 CREATE TABLE regions (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     province VARCHAR(100)
 );
 
 CREATE TABLE agriculture_data (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     region_id INT,
     year INT,
     rainfall FLOAT,
@@ -15,7 +15,7 @@ CREATE TABLE agriculture_data (
 );
 
 CREATE TABLE predictions (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     region_id INT,
     year INT,
     predicted_production FLOAT,
