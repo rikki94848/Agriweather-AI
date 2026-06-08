@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
+import httpx
 
 app = FastAPI(
     title="AgriWeather AI Backend API",
@@ -40,6 +41,8 @@ agriculture_data = [
 
 prediction_history = []
 
+AI_SERVICE_URL = "http://localhost:8001"
+
 
 class PredictionInput(BaseModel):
     region: str
@@ -66,46 +69,34 @@ def get_agriculture_data():
 
 
 @app.post("/predict")
-def predict_harvest(data: PredictionInput):
-    # Untuk Minggu 2, prediksi masih simulasi awal.
-    # Nanti pada tahap AI Service, bagian ini akan dihubungkan ke model Scikit-learn.
+async def predict_harvest(data: PredictionInput):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{AI_SERVICE_URL}/predict", json=data.dict(), timeout=10.0
+            )
 
-    rainfall_factor = 1.05 if 1800 <= data.rainfall <= 3000 else 0.90
-    temperature_factor = 1.03 if 24 <= data.temperature <= 29 else 0.92
-    area_factor = data.harvest_area * 5.8
+        response.raise_for_status()
+        ai_response = response.json()
 
-    predicted_production = (
-        ((data.previous_production * 0.5) + (area_factor * 0.5))
-        * rainfall_factor
-        * temperature_factor
-    )
+        result = ai_response["result"]
+        prediction_history.append(result)
 
-    if predicted_production >= data.previous_production:
-        risk_level = "Rendah"
-        recommendation = "Kondisi cukup baik. Pertahankan pola tanam dan pemantauan cuaca secara berkala."
-    elif predicted_production >= data.previous_production * 0.85:
-        risk_level = "Sedang"
-        recommendation = "Terdapat potensi penurunan produksi. Perlu pemantauan curah hujan, suhu, dan pengelolaan irigasi."
-    else:
-        risk_level = "Tinggi"
-        recommendation = "Risiko penurunan hasil panen cukup tinggi. Disarankan melakukan penyesuaian jadwal tanam dan pengelolaan air."
+        return {
+            "message": "Prediksi berhasil dibuat melalui integrasi Backend API dan AI Service",
+            "source": "AI Service",
+            "input": data,
+            "result": result,
+        }
 
-    result = {
-        "region": data.region,
-        "year": data.year,
-        "predicted_production": round(predicted_production, 2),
-        "risk_level": risk_level,
-        "recommendation": recommendation,
-        "created_at": datetime.now().isoformat(),
-    }
+    except httpx.ConnectError:
+        return {
+            "message": "Gagal terhubung ke AI Service",
+            "error": "Pastikan AI Service berjalan di http://localhost:8001",
+        }
 
-    prediction_history.append(result)
-
-    return {
-        "message": "Prediksi hasil panen berhasil dibuat",
-        "input": data,
-        "result": result,
-    }
+    except Exception as e:
+        return {"message": "Terjadi kesalahan saat memproses prediksi", "error": str(e)}
 
 
 @app.get("/predictions")
@@ -124,3 +115,29 @@ async def upload_dataset(file: UploadFile = File(...)):
         "content_type": file.content_type,
         "note": "Integrasi Google Cloud Storage akan ditambahkan pada tahap berikutnya.",
     }
+
+
+@app.get("/ai-health")
+async def check_ai_service():
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"{AI_SERVICE_URL}/health", timeout=10.0)
+
+        response.raise_for_status()
+
+        return {
+            "message": "AI Service berhasil terhubung",
+            "ai_service": response.json(),
+        }
+
+    except httpx.ConnectError:
+        return {
+            "message": "Gagal terhubung ke AI Service",
+            "error": "Pastikan AI Service berjalan di http://localhost:8001",
+        }
+
+    except Exception as e:
+        return {
+            "message": "Terjadi kesalahan saat mengecek AI Service",
+            "error": str(e),
+        }
