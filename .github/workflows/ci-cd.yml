@@ -17,11 +17,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # =========================
+      # Python setup
+      # =========================
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # =========================
+      # Backend check
+      # =========================
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
@@ -31,6 +37,9 @@ jobs:
         run: |
           python -m compileall backend
 
+      # =========================
+      # AI Service check
+      # =========================
       - name: Install AI service dependencies
         run: |
           pip install -r ai-service/requirements.txt
@@ -39,24 +48,44 @@ jobs:
         run: |
           python -m compileall ai-service
 
+      # =========================
+      # Frontend build
+      # =========================
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "20.19.0"
 
       - name: Install frontend dependencies
         working-directory: frontend
-        run: npm install
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      - name: Fix Vite permission
+        working-directory: frontend
+        run: |
+          chmod +x ./node_modules/.bin/vite
 
       - name: Build frontend
         working-directory: frontend
-        run: npm run build
+        run: |
+          npm run build
 
+      # =========================
+      # Docker image build
+      # =========================
       - name: Build backend Docker image
-        run: docker build -t agriweather-backend ./backend
+        run: |
+          docker build -t agriweather-backend ./backend
 
       - name: Build AI service Docker image
-        run: docker build -t agriweather-ai-service ./ai-service
+        run: |
+          docker build -t agriweather-ai-service ./ai-service
 
       - name: Build frontend Docker image
-        run: docker build -t agriweather-frontend ./frontend
+        run: |
+          docker build -t agriweather-frontend ./frontend
