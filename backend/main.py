@@ -1,3 +1,7 @@
+from sqlalchemy import text
+from database import engine
+import os
+from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -41,7 +45,9 @@ agriculture_data = [
 
 prediction_history = []
 
-AI_SERVICE_URL = "http://localhost:8001"
+load_dotenv()
+
+AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
 
 
 class PredictionInput(BaseModel):
@@ -65,7 +71,30 @@ def health_check():
 
 @app.get("/agriculture-data")
 def get_agriculture_data():
-    return {"message": "Data pertanian berhasil diambil", "data": agriculture_data}
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT 
+                    agriculture_data.id,
+                    regions.name AS region,
+                    regions.province,
+                    agriculture_data.year,
+                    agriculture_data.rainfall,
+                    agriculture_data.temperature,
+                    agriculture_data.harvest_area,
+                    agriculture_data.production
+                FROM agriculture_data
+                JOIN regions ON agriculture_data.region_id = regions.id
+                ORDER BY agriculture_data.year DESC
+            """)).mappings().all()
+
+        return {
+            "message": "Data pertanian berhasil diambil dari database",
+            "data": [dict(row) for row in rows],
+        }
+
+    except Exception as e:
+        return {"message": "Gagal mengambil data pertanian", "error": str(e)}
 
 
 @app.post("/predict")
@@ -80,6 +109,37 @@ async def predict_harvest(data: PredictionInput):
         ai_response = response.json()
 
         result = ai_response["result"]
+        with engine.begin() as conn:
+            region = conn.execute(
+                text("SELECT id FROM regions WHERE name = :name"), {"name": data.region}
+            ).fetchone()
+
+            if region:
+                region_id = region[0]
+            else:
+                insert_region = conn.execute(
+                    text(
+                        "INSERT INTO regions (name, province) VALUES (:name, :province)"
+                    ),
+                    {"name": data.region, "province": "Jawa Barat"},
+                )
+                region_id = insert_region.lastrowid
+
+            conn.execute(
+                text("""
+                    INSERT INTO predictions 
+                    (region_id, year, predicted_production, risk_level, recommendation)
+                    VALUES 
+                    (:region_id, :year, :predicted_production, :risk_level, :recommendation)
+                """),
+                {
+                    "region_id": region_id,
+                    "year": result["year"],
+                    "predicted_production": result["predicted_production"],
+                    "risk_level": result["risk_level"],
+                    "recommendation": result["recommendation"],
+                },
+            )
         prediction_history.append(result)
 
         return {
@@ -101,7 +161,29 @@ async def predict_harvest(data: PredictionInput):
 
 @app.get("/predictions")
 def get_predictions():
-    return {"message": "Riwayat prediksi berhasil diambil", "data": prediction_history}
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT 
+                    predictions.id,
+                    regions.name AS region,
+                    predictions.year,
+                    predictions.predicted_production,
+                    predictions.risk_level,
+                    predictions.recommendation,
+                    predictions.created_at
+                FROM predictions
+                JOIN regions ON predictions.region_id = regions.id
+                ORDER BY predictions.created_at DESC
+            """)).mappings().all()
+
+        return {
+            "message": "Riwayat prediksi berhasil diambil dari database",
+            "data": [dict(row) for row in rows],
+        }
+
+    except Exception as e:
+        return {"message": "Gagal mengambil riwayat prediksi", "error": str(e)}
 
 
 @app.post("/upload-dataset")
@@ -139,5 +221,25 @@ async def check_ai_service():
     except Exception as e:
         return {
             "message": "Terjadi kesalahan saat mengecek AI Service",
+            "error": str(e),
+        }
+
+
+@app.get("/db-health")
+def db_health():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+
+        return {
+            "status": "ok",
+            "service": "mysql-database",
+            "message": "Database berhasil terhubung",
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": "Database gagal terhubung",
             "error": str(e),
         }
