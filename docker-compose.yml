@@ -54,6 +54,10 @@ services:
     environment:
       DATABASE_URL: mysql+pymysql://agriuser:agripass@mysql-db:3306/agriweather_db
       AI_SERVICE_URL: http://ai-service:8001
+      GCS_BUCKET_NAME: agriweather-ai-datasets-rikki-152022055
+      GOOGLE_APPLICATION_CREDENTIALS: /app/gcp-key.json
+    volumes:
+      - ./backend/gcp-key.json:/app/gcp-key.json:ro
     ports:
       - "8000:8000"
 

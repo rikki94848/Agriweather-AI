@@ -1,0 +1,12 @@
+backend/.env
+ai-service/.env
+.env
+
+backend/gcp-key.json
+gcp-key.json
+application_default_credentials.json
+
+venv/
+node_modules/
+__pycache__/
+backend/__pycache__/

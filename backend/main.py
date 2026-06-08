@@ -1,3 +1,5 @@
+from google.cloud import storage
+import uuid
 from sqlalchemy import text
 from database import engine
 import os
@@ -46,6 +48,11 @@ agriculture_data = [
 prediction_history = []
 
 load_dotenv()
+
+GCS_PROJECT_ID = os.getenv("GCS_PROJECT_ID", "project-b47a591b-d513-4f00-b43")
+GCS_BUCKET_NAME = os.getenv(
+    "GCS_BUCKET_NAME", "agriweather-ai-datasets-rikki-152022055"
+)
 
 AI_SERVICE_URL = os.getenv("AI_SERVICE_URL", "http://localhost:8001")
 
@@ -188,15 +195,35 @@ def get_predictions():
 
 @app.post("/upload-dataset")
 async def upload_dataset(file: UploadFile = File(...)):
-    # Untuk tahap awal, endpoint ini baru menerima file.
-    # Pada tahap berikutnya akan dihubungkan ke Google Cloud Storage.
+    try:
+        if not file.filename.endswith(".csv"):
+            return {"status": "error", "message": "File harus berformat CSV"}
 
-    return {
-        "message": "File dataset berhasil diterima",
-        "filename": file.filename,
-        "content_type": file.content_type,
-        "note": "Integrasi Google Cloud Storage akan ditambahkan pada tahap berikutnya.",
-    }
+        storage_client = storage.Client(project=GCS_PROJECT_ID)
+        bucket = storage_client.bucket(GCS_BUCKET_NAME)
+
+        unique_filename = f"datasets/{uuid.uuid4()}-{file.filename}"
+        blob = bucket.blob(unique_filename)
+
+        file_content = await file.read()
+
+        blob.upload_from_string(file_content, content_type=file.content_type)
+
+        return {
+            "status": "success",
+            "message": "Dataset berhasil diunggah ke Google Cloud Storage",
+            "bucket": GCS_BUCKET_NAME,
+            "filename": file.filename,
+            "object_name": unique_filename,
+            "gcs_path": f"gs://{GCS_BUCKET_NAME}/{unique_filename}",
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": "Gagal mengunggah dataset ke Google Cloud Storage",
+            "error": str(e),
+        }
 
 
 @app.get("/ai-health")
