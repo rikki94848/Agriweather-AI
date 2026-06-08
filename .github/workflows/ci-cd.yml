@@ -1,26 +1,62 @@
-name: CI/CD Pipeline
+name: AgriWeather AI CI/CD
 
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  build:
+  build-and-test:
+    name: Build and Test AgriWeather AI
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build project
-        run: echo "Build frontend, backend, and AI service"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: Test project
-        run: echo "Run testing"
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
 
-      - name: Dockerize
-        run: echo "Build Docker images"
+      - name: Check backend syntax
+        run: |
+          python -m compileall backend
 
-      - name: Deploy
-        run: echo "Deploy to cloud server"
+      - name: Install AI service dependencies
+        run: |
+          pip install -r ai-service/requirements.txt
+
+      - name: Check AI service syntax
+        run: |
+          python -m compileall ai-service
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build backend Docker image
+        run: docker build -t agriweather-backend ./backend
+
+      - name: Build AI service Docker image
+        run: docker build -t agriweather-ai-service ./ai-service
+
+      - name: Build frontend Docker image
+        run: docker build -t agriweather-frontend ./frontend
