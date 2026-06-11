@@ -68,6 +68,11 @@ class PredictionInput(BaseModel):
     previous_production: float
 
 
+class PredictAutoRequest(BaseModel):
+    region: str
+    year: int
+
+
 def get_weather_from_nasa_power(latitude: float, longitude: float, year: int):
     """
     Mengambil data cuaca tahunan dari NASA POWER berdasarkan koordinat.
