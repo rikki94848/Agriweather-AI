@@ -244,6 +244,142 @@ def get_weather(region: str, year: int):
         db.close()
 
 
+@app.post("/predict-auto")
+def predict_auto(request: PredictAutoRequest):
+    db = SessionLocal()
+
+    try:
+        # Ambil data wilayah dan koordinat
+        region_result = db.execute(
+            text("""
+            SELECT id, name, province, latitude, longitude
+            FROM regions
+            WHERE name = :region
+            LIMIT 1
+        """),
+            {"region": request.region},
+        )
+
+        region_data = region_result.fetchone()
+
+        if not region_data:
+            return {"status": "error", "message": "Wilayah tidak ditemukan di database"}
+
+        if region_data.latitude is None or region_data.longitude is None:
+            return {"status": "error", "message": "Koordinat wilayah belum tersedia"}
+
+        # Ambil data pertanian terakhir sebelum tahun prediksi
+        agriculture_result = db.execute(
+            text("""
+            SELECT 
+                ad.year,
+                ad.harvest_area,
+                ad.production
+            FROM agriculture_data ad
+            JOIN regions r ON ad.region_id = r.id
+            WHERE r.name = :region
+              AND ad.year < :prediction_year
+            ORDER BY ad.year DESC
+            LIMIT 1
+        """),
+            {"region": request.region, "prediction_year": request.year},
+        )
+
+        agriculture_data = agriculture_result.fetchone()
+
+        if not agriculture_data:
+            return {
+                "status": "error",
+                "message": "Data pertanian sebelumnya belum tersedia untuk wilayah tersebut",
+            }
+
+        # Data cuaca diambil berdasarkan tahun data pertanian sebelumnya
+        weather_year = agriculture_data.year
+
+        weather = get_weather_from_nasa_power(
+            latitude=region_data.latitude,
+            longitude=region_data.longitude,
+            year=weather_year,
+        )
+
+        # Payload otomatis untuk AI Service
+        ai_payload = {
+            "region": region_data.name,
+            "year": request.year,
+            "rainfall": weather["rainfall"],
+            "temperature": weather["temperature"],
+            "harvest_area": agriculture_data.harvest_area,
+            "previous_production": agriculture_data.production,
+        }
+
+        ai_response = requests.post(
+            f"{AI_SERVICE_URL}/predict", json=ai_payload, timeout=30
+        )
+        ai_response.raise_for_status()
+
+        raw_ai_result = ai_response.json()
+        ai_result = raw_ai_result.get("result", raw_ai_result)
+
+        predicted_production = ai_result.get("predicted_production")
+        risk_level = ai_result.get("risk_level")
+        recommendation = ai_result.get("recommendation")
+
+        # Simpan hasil prediksi ke database
+        db.execute(
+            text("""
+            INSERT INTO predictions 
+            (region_id, year, predicted_production, risk_level, recommendation)
+            VALUES 
+            (:region_id, :year, :predicted_production, :risk_level, :recommendation)
+        """),
+            {
+                "region_id": region_data.id,
+                "year": request.year,
+                "predicted_production": predicted_production,
+                "risk_level": risk_level,
+                "recommendation": recommendation,
+            },
+        )
+
+        db.commit()
+
+        return {
+            "message": "Prediksi otomatis berhasil dibuat",
+            "mode": "automatic",
+            "input_source": {
+                "region": "database",
+                "weather": weather["source"],
+                "agriculture_data": "database",
+            },
+            "region": {
+                "name": region_data.name,
+                "province": region_data.province,
+                "latitude": region_data.latitude,
+                "longitude": region_data.longitude,
+            },
+            "weather_year": weather_year,
+            "auto_input": ai_payload,
+            "result": {
+                "region": region_data.name,
+                "year": request.year,
+                "predicted_production": predicted_production,
+                "risk_level": risk_level,
+                "recommendation": recommendation,
+            },
+        }
+
+    except Exception as e:
+        db.rollback()
+        return {
+            "status": "error",
+            "message": "Gagal membuat prediksi otomatis",
+            "error": str(e),
+        }
+
+    finally:
+        db.close()
+
+
 @app.post("/predict")
 async def predict_harvest(data: PredictionInput):
     try:
