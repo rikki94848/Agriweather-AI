@@ -66,3 +66,11 @@ Thumbs.db
 .idea/
 # AWS EC2 key pair
 *.pem
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env
+*.pem
