@@ -371,8 +371,9 @@ def predict_auto(request: PredictAutoRequest):
                 "predicted_production": predicted_production,
                 "prediction_range": prediction_range,
                 "risk_level": risk_level,
-                "recommendation": recommendation
-            }
+                "recommendation": recommendation,
+            },
+        }
 
     except Exception as e:
         db.rollback()
