@@ -2,6 +2,7 @@ from google.cloud import storage
 import uuid
 from sqlalchemy import text
 from database import engine
+from database import SessionLocal
 import os
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File
@@ -102,6 +103,44 @@ def get_agriculture_data():
 
     except Exception as e:
         return {"message": "Gagal mengambil data pertanian", "error": str(e)}
+
+
+@app.get("/regions")
+def get_regions():
+    db = SessionLocal()
+    try:
+        result = db.execute(text("""
+            SELECT id, name, province, latitude, longitude
+            FROM regions
+            ORDER BY name ASC
+        """))
+
+        regions = []
+        for row in result:
+            regions.append(
+                {
+                    "id": row.id,
+                    "name": row.name,
+                    "province": row.province,
+                    "latitude": row.latitude,
+                    "longitude": row.longitude,
+                }
+            )
+
+        return {
+            "message": "Data wilayah berhasil diambil dari database",
+            "data": regions,
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": "Gagal mengambil data wilayah",
+            "error": str(e),
+        }
+
+    finally:
+        db.close()
 
 
 @app.post("/predict")
