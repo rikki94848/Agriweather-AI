@@ -63,21 +63,73 @@ jobs:
         run: |
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/agriweather-ai-frontend:latest
 
-  deploy:
+  deploy-frontend:
     needs: build-test-push
     runs-on: ubuntu-latest
 
     steps:
-      - name: Deploy to AWS EC2
+      - name: Deploy Frontend to Frontend EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.FRONTEND_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd ~/Agriweather-AI
-            git pull origin main
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
-            docker image prune -f
-            docker ps
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/agriweather-ai-frontend:latest
+            sudo docker rm -f agriweather-frontend 2>/dev/null || true
+            sudo docker run -d \
+              --name agriweather-frontend \
+              --restart unless-stopped \
+              -p 80:5173 \
+              ${{ secrets.DOCKERHUB_USERNAME }}/agriweather-ai-frontend:latest
+            sudo docker image prune -f
+            sudo docker ps
+
+  deploy-backend:
+    needs: build-test-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy Backend to Backend EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.BACKEND_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/agriweather-ai-backend:latest
+            sudo docker rm -f agriweather-backend 2>/dev/null || true
+            sudo docker run -d \
+              --name agriweather-backend \
+              --restart unless-stopped \
+              -p 8000:8000 \
+              -e DATABASE_URL="mysql+pymysql://agriuser:agripass@10.30.1.254:3306/agriweather_db" \
+              -e AI_SERVICE_URL="http://10.40.1.161:8001" \
+              -e GOOGLE_APPLICATION_CREDENTIALS="/gcp/adc.json" \
+              -e GCS_BUCKET_NAME="agriweather-ai-datasets-rikki-152022055" \
+              -v /home/ubuntu/.config/gcloud/application_default_credentials.json:/gcp/adc.json:ro \
+              ${{ secrets.DOCKERHUB_USERNAME }}/agriweather-ai-backend:latest
+            sudo docker image prune -f
+            sudo docker ps
+
+  deploy-ai:
+    needs: build-test-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy AI Service to AI EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.AI_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/agriweather-ai-service:latest
+            sudo docker rm -f agriweather-ai-service 2>/dev/null || true
+            sudo docker run -d \
+              --name agriweather-ai-service \
+              --restart unless-stopped \
+              -p 8001:8001 \
+              ${{ secrets.DOCKERHUB_USERNAME }}/agriweather-ai-service:latest
+            sudo docker image prune -f
+            sudo docker ps
