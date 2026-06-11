@@ -8,3 +8,4 @@ sqlalchemy
 pymysql
 cryptography
 google-cloud-storage
+requests

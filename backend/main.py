@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import requests
 from datetime import datetime
 import httpx
 
@@ -65,6 +66,59 @@ class PredictionInput(BaseModel):
     temperature: float
     harvest_area: float
     previous_production: float
+
+
+def get_weather_from_nasa_power(latitude: float, longitude: float, year: int):
+    """
+    Mengambil data cuaca tahunan dari NASA POWER berdasarkan koordinat.
+    Data yang dipakai:
+    - T2M: suhu rata-rata 2 meter
+    - PRECTOTCORR: total curah hujan/presipitasi
+    """
+
+    url = "https://power.larc.nasa.gov/api/temporal/daily/point"
+
+    params = {
+        "parameters": "T2M,PRECTOTCORR",
+        "community": "AG",
+        "longitude": longitude,
+        "latitude": latitude,
+        "start": f"{year}0101",
+        "end": f"{year}1231",
+        "format": "JSON",
+    }
+
+    response = requests.get(url, params=params, timeout=30)
+    response.raise_for_status()
+
+    data = response.json()
+    parameter_data = data["properties"]["parameter"]
+
+    temperature_values = [
+        value
+        for value in parameter_data["T2M"].values()
+        if value is not None and value != -999
+    ]
+
+    rainfall_values = [
+        value
+        for value in parameter_data["PRECTOTCORR"].values()
+        if value is not None and value != -999
+    ]
+
+    if not temperature_values or not rainfall_values:
+        raise ValueError(
+            "Data cuaca dari NASA POWER tidak tersedia untuk wilayah/tahun tersebut"
+        )
+
+    avg_temperature = sum(temperature_values) / len(temperature_values)
+    total_rainfall = sum(rainfall_values)
+
+    return {
+        "temperature": round(avg_temperature, 2),
+        "rainfall": round(total_rainfall, 2),
+        "source": "NASA POWER",
+    }
 
 
 @app.get("/")
@@ -136,6 +190,53 @@ def get_regions():
         return {
             "status": "error",
             "message": "Gagal mengambil data wilayah",
+            "error": str(e),
+        }
+
+    finally:
+        db.close()
+
+
+@app.get("/weather")
+def get_weather(region: str, year: int):
+    db = SessionLocal()
+    try:
+        result = db.execute(
+            text("""
+            SELECT id, name, province, latitude, longitude
+            FROM regions
+            WHERE name = :region
+            LIMIT 1
+        """),
+            {"region": region},
+        )
+
+        region_data = result.fetchone()
+
+        if not region_data:
+            return {"status": "error", "message": "Wilayah tidak ditemukan di database"}
+
+        if region_data.latitude is None or region_data.longitude is None:
+            return {"status": "error", "message": "Koordinat wilayah belum tersedia"}
+
+        weather = get_weather_from_nasa_power(
+            latitude=region_data.latitude, longitude=region_data.longitude, year=year
+        )
+
+        return {
+            "message": "Data cuaca berhasil diambil dari NASA POWER",
+            "region": region_data.name,
+            "province": region_data.province,
+            "year": year,
+            "latitude": region_data.latitude,
+            "longitude": region_data.longitude,
+            "weather": weather,
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": "Gagal mengambil data cuaca",
             "error": str(e),
         }
 
