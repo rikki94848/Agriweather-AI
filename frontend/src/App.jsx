@@ -10,6 +10,8 @@ function App() {
   const [predictions, setPredictions] = useState([]);
   const [predictionResult, setPredictionResult] = useState(null);
   const [uploadMessage, setUploadMessage] = useState("");
+  const [regions, setRegions] = useState([]);
+  const [autoMessage, setAutoMessage] = useState("");
 
   const [form, setForm] = useState({
     region: "Bandung",
@@ -20,8 +22,14 @@ function App() {
     previous_production: 7200,
   });
 
+  const [autoForm, setAutoForm] = useState({
+    region: "Bandung",
+    year: 2025,
+  });
+
   useEffect(() => {
     fetchHealth();
+    fetchRegions();
     fetchAgricultureData();
     fetchPredictions();
   }, []);
@@ -38,6 +46,16 @@ function App() {
 
       const db = await fetch(`${API_URL}/db-health`).then((res) => res.json());
       setDbStatus(db.status || "ok");
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const fetchRegions = async () => {
+    try {
+      const response = await fetch(`${API_URL}/regions`);
+      const result = await response.json();
+      setRegions(result.data || []);
     } catch (error) {
       console.error(error);
     }
@@ -70,6 +88,13 @@ function App() {
     });
   };
 
+  const handleAutoChange = (event) => {
+    setAutoForm({
+      ...autoForm,
+      [event.target.name]: event.target.value,
+    });
+  };
+
   const handlePredict = async (event) => {
     event.preventDefault();
 
@@ -92,10 +117,56 @@ function App() {
       });
 
       const result = await response.json();
-      setPredictionResult(result.result);
+
+      setPredictionResult({
+        ...result.result,
+        mode: "manual",
+      });
+
       fetchPredictions();
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleAutoPredict = async (event) => {
+    event.preventDefault();
+    setAutoMessage("Mengambil data cuaca dan membuat prediksi otomatis...");
+
+    const payload = {
+      region: autoForm.region,
+      year: Number(autoForm.year),
+    };
+
+    try {
+      const response = await fetch(`${API_URL}/predict-auto`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (result.status === "error") {
+        setAutoMessage(result.message || "Prediksi otomatis gagal");
+        return;
+      }
+
+      setPredictionResult({
+        ...result.result,
+        mode: "automatic",
+        auto_input: result.auto_input,
+        input_source: result.input_source,
+        weather_year: result.weather_year,
+      });
+
+      setAutoMessage("Prediksi otomatis berhasil dibuat.");
+      fetchPredictions();
+    } catch (error) {
+      console.error(error);
+      setAutoMessage("Prediksi otomatis gagal.");
     }
   };
 
@@ -149,7 +220,54 @@ function App() {
 
       <section className="grid">
         <div className="panel">
-          <h2>Form Prediksi Hasil Panen</h2>
+          <h2>Prediksi Otomatis</h2>
+          <p>
+            Pengguna cukup memilih wilayah dan tahun. Sistem akan mengambil data
+            cuaca dari NASA POWER serta data pertanian dari database.
+          </p>
+
+          <form onSubmit={handleAutoPredict} className="form">
+            <label>Wilayah</label>
+            <select
+              name="region"
+              value={autoForm.region}
+              onChange={handleAutoChange}
+            >
+              {regions.length > 0 ? (
+                regions.map((region) => (
+                  <option key={region.id} value={region.name}>
+                    {region.name} - {region.province}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="Bandung">Bandung</option>
+                  <option value="Garut">Garut</option>
+                </>
+              )}
+            </select>
+
+            <label>Tahun Prediksi</label>
+            <input
+              name="year"
+              type="number"
+              value={autoForm.year}
+              onChange={handleAutoChange}
+            />
+
+            <button type="submit">Prediksi Otomatis</button>
+          </form>
+
+          <p>{autoMessage}</p>
+        </div>
+
+        <div className="panel">
+          <h2>Form Prediksi Manual</h2>
+          <p>
+            Mode manual digunakan untuk pengujian teknis dengan input curah
+            hujan, suhu, luas panen, dan produksi sebelumnya.
+          </p>
+
           <form onSubmit={handlePredict} className="form">
             <label>Wilayah</label>
             <input name="region" value={form.region} onChange={handleChange} />
@@ -194,10 +312,12 @@ function App() {
               onChange={handleChange}
             />
 
-            <button type="submit">Prediksi Sekarang</button>
+            <button type="submit">Prediksi Manual</button>
           </form>
         </div>
+      </section>
 
+      <section className="grid">
         <div className="panel">
           <h2>Hasil Prediksi AI</h2>
           {predictionResult ? (
@@ -205,22 +325,65 @@ function App() {
               <h3>
                 {predictionResult.region} - {predictionResult.year}
               </h3>
+
+              <p>
+                <b>Mode Prediksi:</b>{" "}
+                {predictionResult.mode === "automatic" ? "Otomatis" : "Manual"}
+              </p>
+
               <p>
                 <b>Prediksi Produksi:</b>{" "}
                 {predictionResult.predicted_production} ton
               </p>
+
               <p>
                 <b>Kategori Risiko:</b> {predictionResult.risk_level}
               </p>
+
               <p>
                 <b>Rekomendasi:</b> {predictionResult.recommendation}
               </p>
+
+              {predictionResult.mode === "automatic" &&
+                predictionResult.auto_input && (
+                  <div>
+                    <h4>Data Otomatis yang Digunakan</h4>
+                    <p>
+                      <b>Sumber Cuaca:</b>{" "}
+                      {predictionResult.input_source?.weather}
+                    </p>
+                    <p>
+                      <b>Tahun Data Cuaca:</b> {predictionResult.weather_year}
+                    </p>
+                    <p>
+                      <b>Curah Hujan:</b> {predictionResult.auto_input.rainfall}
+                    </p>
+                    <p>
+                      <b>Suhu Rata-rata:</b>{" "}
+                      {predictionResult.auto_input.temperature}
+                    </p>
+                    <p>
+                      <b>Luas Panen:</b>{" "}
+                      {predictionResult.auto_input.harvest_area}
+                    </p>
+                    <p>
+                      <b>Produksi Sebelumnya:</b>{" "}
+                      {predictionResult.auto_input.previous_production}
+                    </p>
+                  </div>
+                )}
             </div>
           ) : (
             <p>Belum ada hasil prediksi.</p>
           )}
+        </div>
 
+        <div className="panel">
           <h2>Upload Dataset</h2>
+          <p>
+            Upload dataset digunakan oleh admin untuk menyimpan file CSV ke
+            Google Cloud Storage sebagai object storage multi-cloud.
+          </p>
           <input type="file" accept=".csv" onChange={handleUpload} />
           <p>{uploadMessage}</p>
         </div>
