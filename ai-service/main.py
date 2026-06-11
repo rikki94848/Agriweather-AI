@@ -168,6 +168,16 @@ def predict_harvest(data: PredictionInput):
             "Disarankan melakukan penyesuaian jadwal tanam, pengelolaan irigasi, dan mitigasi risiko cuaca."
         )
 
+    if risk_level == "Rendah":
+        margin = 0.05
+    elif risk_level == "Sedang":
+        margin = 0.10
+    else:
+        margin = 0.15
+
+    prediction_min = predicted_production * (1 - margin)
+    prediction_max = predicted_production * (1 + margin)
+
     return {
         "message": "Prediksi berhasil dibuat oleh AI Service",
         "model": "RandomForestRegressor",
@@ -183,6 +193,11 @@ def predict_harvest(data: PredictionInput):
             "region": data.region,
             "year": data.year,
             "predicted_production": round(float(predicted_production), 2),
+            "prediction_range": {
+                "min": round(float(prediction_min), 2),
+                "max": round(float(prediction_max), 2),
+                "margin_percent": int(margin * 100),
+            },
             "risk_level": risk_level,
             "recommendation": recommendation,
             "created_at": datetime.now().isoformat(),

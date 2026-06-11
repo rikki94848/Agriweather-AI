@@ -328,6 +328,7 @@ def predict_auto(request: PredictAutoRequest):
         predicted_production = ai_result.get("predicted_production")
         risk_level = ai_result.get("risk_level")
         recommendation = ai_result.get("recommendation")
+        prediction_range = ai_result.get("prediction_range")
 
         # Simpan hasil prediksi ke database
         db.execute(
@@ -368,10 +369,10 @@ def predict_auto(request: PredictAutoRequest):
                 "region": region_data.name,
                 "year": request.year,
                 "predicted_production": predicted_production,
+                "prediction_range": prediction_range,
                 "risk_level": risk_level,
-                "recommendation": recommendation,
-            },
-        }
+                "recommendation": recommendation
+            }
 
     except Exception as e:
         db.rollback()

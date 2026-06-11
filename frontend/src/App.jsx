@@ -332,9 +332,17 @@ function App() {
               </p>
 
               <p>
-                <b>Prediksi Produksi:</b>{" "}
+                <b>Estimasi Produksi:</b>{" "}
                 {predictionResult.predicted_production} ton
               </p>
+
+              {predictionResult.prediction_range && (
+                <p>
+                  <b>Kisaran Prediksi:</b>{" "}
+                  {predictionResult.prediction_range.min} -{" "}
+                  {predictionResult.prediction_range.max} ton
+                </p>
+              )}
 
               <p>
                 <b>Kategori Risiko:</b> {predictionResult.risk_level}
